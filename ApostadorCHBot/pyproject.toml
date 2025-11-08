@@ -1,16 +1,15 @@
 [project]
-name = "python-template"
+name = "apostador-ch-bot"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
-requires-python = ">=3.11"
+authors = [
+    { name = "Caique Silva", email = "caique@email.com" }
+]
+description = "Bot para análise adaptativa de jogos"
 dependencies = [
-    "beautifulsoup4>=4.14.2",
-    "flask>=3.1.2",
-    "numpy>=2.3.4",
-    "pandas>=2.3.3",
-    "pytelegrambotapi>=4.29.1",
-    "reportlab>=4.4.4",
-    "requests>=2.32.5",
-    "scikit-learn>=1.7.2",
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "statsmodels"
 ]
