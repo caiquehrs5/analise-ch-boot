@@ -1,85 +1,78 @@
 # -*- coding: utf-8 -*-
 import requests
 import pandas as pd
-import os
 import time
 
 TOKEN = "IrTQK9UlTuwS5goNh6zQruXlpZTxcUtM11RoPwsd31Y26e9x2e73oufBS5HC"
-BASE_URL = "https://api.sportmonks.com/v3/football"
-HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+BASE_URL = f"https://api.sportmonks.com/v3/football"
+COUNTRY_ID = 17  # Brasil
 
 def validar_token():
-    print("🔍 Validando token...")
-    url = f"{BASE_URL}/leagues"
-    r = requests.get(url, headers=HEADERS)
-    if r.status_code == 200:
-        print("✅ Token válido – acesso confirmado.")
-        return True
-    else:
-        print(f"❌ Erro {r.status_code}: {r.text}")
-        return False
-
-def coletar_temporada(ano):
-    print(f"\n⚽ Coletando Série A {ano}...")
-    url = f"{BASE_URL}/fixtures/seasons/{ano}?include=participants;venue"
-    r = requests.get(url, headers=HEADERS)
-    if r.status_code != 200:
-        print(f"⚠️ Erro {r.status_code}: {r.text}")
-        return pd.DataFrame()
-    data = r.json().get("data", [])
-    if not data:
-        print("⚠️ Nenhum dado retornado para esta temporada.")
-        return pd.DataFrame()
-
-    rows = []
-    for match in data:
-        home, away = None, None
-        if match.get("participants"):
-            for p in match["participants"]:
-                if p.get("meta", {}).get("location") == "home":
-                    home = p.get("name")
-                elif p.get("meta", {}).get("location") == "away":
-                    away = p.get("name")
-        venue = match.get("venue", {}).get("name") if match.get("venue") else None
-        gols_home = match.get("home_score")
-        gols_away = match.get("away_score")
-        vencedor = "Empate"
-        if isinstance(gols_home, int) and isinstance(gols_away, int):
-            if gols_home > gols_away:
-                vencedor = home
-            elif gols_away > gols_home:
-                vencedor = away
-        rows.append({
-            "data": match.get("starting_at", "")[:10],
-            "temporada": ano,
-            "time_casa": home,
-            "time_fora": away,
-            "gols_casa": gols_home,
-            "gols_fora": gols_away,
-            "vencedor": vencedor,
-            "status": match.get("state", ""),
-            "estadio": venue
-        })
-    return pd.DataFrame(rows)
-
-def main():
+    """Valida o token e checa se retorna dados válidos"""
+    print("🔍 Validando token e listando ligas do Brasil...")
+    url = f"{BASE_URL}/leagues/countries/{COUNTRY_ID}?api_token={TOKEN}"
     inicio = time.time()
-    if not validar_token():
-        return
-    os.makedirs("dados", exist_ok=True)
-    dfs = []
-    for ano in [2023, 2024, 2025]:
-        df_temp = coletar_temporada(ano)
-        if not df_temp.empty:
-            dfs.append(df_temp)
-    if dfs:
-        df_final = pd.concat(dfs, ignore_index=True)
-        path = "dados/historico_sportmonks.csv"
-        df_final.to_csv(path, index=False, encoding="utf-8-sig")
-        print(f"\n💾 Arquivo consolidado: {path} ({len(df_final)} linhas)")
-    else:
-        print("⚠️ Nenhum dado salvo.")
-    print(f"⏱️ Execução total: {time.time()-inicio:.2f}s")
+    try:
+        r = requests.get(url, timeout=15)
+        if r.status_code == 200:
+            data = r.json().get("data", [])
+            if not data:
+                print("⚠️ Nenhuma liga encontrada para o Brasil.")
+                return False
+            print(f"✅ Token válido! {len(data)} ligas encontradas:")
+            for l in data[:5]:
+                print(f"   ⚽ {l['name']} (ID: {l['id']})")
+            print(f"⏱️ Finalizado em {time.time()-inicio:.2f}s")
+            return True
+        elif r.status_code == 401:
+            print("❌ Token inválido ou expirado (401).")
+        elif r.status_code == 400:
+            print("⚠️ Requisição inválida (400) — verifique parâmetros.")
+        else:
+            print(f"⚠️ Erro {r.status_code}: {r.text}")
+    except Exception as e:
+        print(f"❌ Erro na conexão: {e}")
+    print(f"⏱️ Finalizado em {time.time()-inicio:.2f}s")
+    return False
+
+
+def coletar_ligas_brasileiras():
+    """Coleta as ligas do país Brasil e salva em CSV"""
+    print("📡 Coletando ligas brasileiras...")
+    url = f"{BASE_URL}/leagues/countries/{COUNTRY_ID}?api_token={TOKEN}"
+    try:
+        r = requests.get(url)
+        if r.status_code != 200:
+            print(f"⚠️ Erro {r.status_code}: {r.text}")
+            return pd.DataFrame()
+
+        data = r.json().get("data", [])
+        if not data:
+            print("⚠️ Nenhum dado retornado.")
+            return pd.DataFrame()
+
+        df = pd.DataFrame([
+            {
+                "id": l["id"],
+                "nome": l["name"],
+                "tipo": l.get("type"),
+                "temporada_atual": l.get("currentseason", {}).get("id"),
+                "ultima_atualizacao": l["updated_at"]
+            }
+            for l in data
+        ])
+        df["data_extracao"] = pd.Timestamp.now()
+        df.sort_values("nome", inplace=True)
+        df.to_csv("ligas_brasileiras.csv", index=False, encoding="utf-8-sig")
+        print(f"💾 Arquivo salvo: ligas_brasileiras.csv ({len(df)} linhas)")
+        return df
+    except Exception as e:
+        print(f"❌ Erro ao coletar ligas: {e}")
+        return pd.DataFrame()
+
 
 if __name__ == "__main__":
-    main()
+    print("\n🚀 Iniciando integração com Sportmonks...\n")
+    if validar_token():
+        coletar_ligas_brasileiras()
+    print("\n✅ Processo finalizado.\n")
