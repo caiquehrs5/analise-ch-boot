@@ -1,75 +1,99 @@
-import os
 import logging
-import pandas as pd
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from ia_adaptativa import carregar_dados, analisar_partida
+import threading
+import time
 from flask import Flask
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, ContextTypes
+)
+from ia_adaptativa import processar_mensagem
+from keep_alive import iniciar_servidor
+import os
 
-# =============== CONFIGURAÇÃO ===============
-TOKEN_PATH = "/workspaces/analise-ch-boot/ApostadorCHBot/.token"
-with open(TOKEN_PATH, "r") as f:
-    TELEGRAM_TOKEN = f.read().strip()
+# ==========================================
+# CONFIGURAÇÃO DE LOGS COLORIDOS E DETALHADOS
+# ==========================================
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] → %(message)s",
+    level=logging.INFO,
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("CHBot")
 
-app_flask = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
+# ==========================================
+# VARIÁVEIS PRINCIPAIS
+# ==========================================
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8302402604:AAE0l2ibTxyIf5fFWbdn7WTJpCYqkMHYyYM")
+START_TIME = time.time()
 
-# =============== COMANDOS ===============
+
+# ==========================================
+# COMANDOS DO BOT
+# ==========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /start - Boas-vindas"""
+    uptime = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - START_TIME))
     await update.message.reply_text(
-        "🤖 *CH Futebol Insights*\n\n"
-        "Envie o comando:\n"
-        "`/analisar TimeA x TimeB`\n\n"
-        "Exemplo:\n"
-        "`/analisar Corinthians x Vasco`\n\n"
-        "_Base: dados reais do Brasileirão Série A 2023._",
-        parse_mode="Markdown"
+        f"👋 Olá, {update.effective_user.first_name}!\n"
+        f"🤖 CH Bot v9.3.4 Final está online!\n"
+        f"⏱ Uptime: {uptime}\n"
+        f"Envie /analisar para processar uma partida com IA adaptativa ⚽"
     )
+    logger.info("Comando /start recebido — Bot operacional.")
+
 
 async def analisar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando que executa a IA adaptativa."""
+    """Comando /analisar — executa IA adaptativa"""
     try:
-        texto = " ".join(context.args)
-        if " x " not in texto and " X " not in texto:
-            await update.message.reply_text("⚠️ Formato incorreto.\nUse: `/analisar TimeA x TimeB`", parse_mode="Markdown")
-            return
-
-        partes = texto.replace(" X ", " x ").split(" x ")
-        time_casa, time_fora = partes[0].strip(), partes[1].strip()
-
-        df = carregar_dados("/workspaces/analise-ch-boot/ApostadorCHBot/historico_2023.csv")
-        resultado = analisar_partida(df, time_casa, time_fora)
-
-        probs = resultado["probabilidades"]
-        resposta = (
-            f"📊 *Análise IA Adaptativa – Série A 2023*\n\n"
-            f"🏠 *{time_casa}*: {probs['vitória_casa']*100:.1f}%\n"
-            f"🤝 *Empate*: {probs['empate']*100:.1f}%\n"
-            f"🚗 *{time_fora}*: {probs['vitória_fora']*100:.1f}%\n\n"
-            f"📈 Diferença de aproveitamento: {resultado['dif_aproveitamento']:+.2f} p.p."
-        )
-
-        await update.message.reply_text(resposta, parse_mode="Markdown")
-
+        inicio = time.time()
+        await update.message.reply_text("🔍 Iniciando análise inteligente...")
+        resposta = processar_mensagem("Analisar últimas partidas Brasileirão 2025")
+        fim = time.time()
+        tempo = round(fim - inicio, 2)
+        await update.message.reply_text(f"✅ Análise concluída em {tempo}s:\n\n{resposta}")
+        logger.info(f"Análise finalizada com sucesso em {tempo}s")
     except Exception as e:
-        logging.error(e)
-        await update.message.reply_text(f"❌ Erro ao processar análise: {e}")
+        logger.error(f"Erro durante análise: {e}")
+        await update.message.reply_text("⚠️ Erro temporário ao processar a análise. Tente novamente mais tarde.")
 
-# =============== TELEGRAM APP ===============
-telegram_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("analisar", analisar))
 
-# =============== FLASK (KEEP-ALIVE) ===============
-@app_flask.route("/")
-def home():
-    return "🤖 CH Futebol Insights Bot rodando..."
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /status — métricas e estado"""
+    uptime = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - START_TIME))
+    await update.message.reply_text(
+        f"🟢 CH Bot v9.3.4 Final ativo!\n"
+        f"⏱ Uptime: {uptime}\n"
+        f"📡 API: SportMonks + IA adaptativa"
+    )
+    logger.info("Status solicitado pelo usuário.")
 
-def run_flask():
-    app_flask.run(host="0.0.0.0", port=5000)
+
+# ==========================================
+# INICIALIZAÇÃO DO BOT
+# ==========================================
+def iniciar_bot():
+    """Inicializa o polling do bot com auto-restart"""
+    while True:
+        try:
+            logger.info("🚀 Iniciando CH Bot v9.3.4 Final (Polling + Flask Threads)...")
+            app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CommandHandler("analisar", analisar))
+            app.add_handler(CommandHandler("status", status))
+
+            # Inicia Flask keep-alive em thread separada
+            flask_thread = threading.Thread(target=iniciar_servidor)
+            flask_thread.daemon = True
+            flask_thread.start()
+
+            logger.info("✅ Threads iniciadas (Bot + Flask).")
+            app.run_polling(allowed_updates=Update.ALL_TYPES)
+        except Exception as e:
+            logger.error(f"❌ Falha no bot: {e}")
+            logger.info("🔁 Reiniciando em 5 segundos...")
+            time.sleep(5)
+
 
 if __name__ == "__main__":
-    import threading
-    threading.Thread(target=run_flask).start()
-    print("🤖 CH Futebol Insights Bot 9.1 – IA Adaptativa integrada ⚽")
-    telegram_app.run_polling()
+    iniciar_bot()
