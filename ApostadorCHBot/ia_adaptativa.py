@@ -64,6 +64,29 @@ def analisar_partida(df, time_casa, time_fora):
         "dif_aproveitamento": round(c["aproveitamento"] - f["aproveitamento"], 2)
     }
 
+def processar_mensagem(msg: str) -> str:
+    """
+    Função para processar mensagens do bot de acordo com o input.
+    Interpreta comandos simples ou executa análise para partidas.
+    """
+    if "analisar" in msg.lower():
+        df = carregar_dados()
+        # Exemplo simples: se o texto contiver dois times separados por 'x'
+        padrao = msg.replace("Analisar", "").strip()
+        if " x " in padrao:
+            times = padrao.split(" x ")
+            if len(times) == 2:
+                resultado = analisar_partida(df, times[0].strip(), times[1].strip())
+                return (
+                    f"Análise {times[0].strip()} x {times[1].strip()} - Probabilidades:\n"
+                    f"Vitória casa: {resultado['probabilidades']['vitória_casa']}\n"
+                    f"Empate: {resultado['probabilidades']['empate']}\n"
+                    f"Vitória fora: {resultado['probabilidades']['vitória_fora']}\n"
+                    f"Diferença de aproveitamento: {resultado['dif_aproveitamento']}%"
+                )
+        return "Exemplo de uso: /analisar Corinthians x Vasco da Gama"
+    return "Comando/processo não reconhecido. Tente /analisar TIME1 x TIME2."
+
 if __name__ == "__main__":
     df = carregar_dados()
     resultado = analisar_partida(df, "Corinthians", "Vasco da Gama")
