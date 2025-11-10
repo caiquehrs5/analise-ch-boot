@@ -1,93 +1,60 @@
 import pandas as pd
 
-def carregar_dados(caminho="historico_2023.csv"):
-    """Carrega e pré-processa os dados do Brasileirão 2023."""
-    df = pd.read_csv(caminho)
-    df["data"] = pd.to_datetime(df["data"])
-    df.dropna(subset=["time_casa", "time_fora"], inplace=True)
-    return df
+CSV_PATH = 'brasileirao_odds_2023.csv'
 
-def calcular_estatisticas(df):
-    """Calcula estatísticas acumuladas e médias por time."""
-    times = sorted(set(df["time_casa"]).union(df["time_fora"]))
-    stats = []
+def carregar_ods_brasileirao(caminho=CSV_PATH):
+    """Carrega CSV de partidas e odds."""
+    return pd.read_csv(caminho)
 
-    for time in times:
-        jogos_casa = df[df["time_casa"] == time]
-        jogos_fora = df[df["time_fora"] == time]
+def analisar_partida_ods(time_casa, time_fora):
+    df = carregar_ods_brasileirao()
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df = df.dropna(subset=['Date'])
+    part = df[(df['HomeTeam'].str.lower() == time_casa.lower()) & (df['AwayTeam'].str.lower() == time_fora.lower())]
 
-        gols_feitos = jogos_casa["gols_casa"].sum() + jogos_fora["gols_fora"].sum()
-        gols_sofridos = jogos_casa["gols_fora"].sum() + jogos_fora["gols_casa"].sum()
+    if part.empty:
+        return f"Não há confrontos recentes entre {time_casa} e {time_fora}!"
 
-        vitorias = len(df[df["vencedor"] == time])
-        empates = len(df[df["vencedor"] == "Empate"])
-        derrotas = len(df[(df["time_casa"] == time) | (df["time_fora"] == time)]) - vitorias - empates
+    vit_casa = len(part[part['FTR'] == 'H'])
+    empates = len(part[part['FTR'] == 'D'])
+    vit_fora = len(part[part['FTR'] == 'A'])
 
-        aproveitamento = round((vitorias * 3 + empates) / ((vitorias + empates + derrotas) * 3) * 100, 2)
+    total = len(part)
+    gols_casa = part['FTHG'].sum()
+    gols_fora = part['FTAG'].sum()
 
-        stats.append({
-            "time": time,
-            "jogos": vitorias + empates + derrotas,
-            "vitorias": vitorias,
-            "empates": empates,
-            "derrotas": derrotas,
-            "gols_feitos": gols_feitos,
-            "gols_sofridos": gols_sofridos,
-            "saldo": gols_feitos - gols_sofridos,
-            "aproveitamento": aproveitamento
-        })
+    media_gols = (gols_casa + gols_fora) / total
 
-    return pd.DataFrame(stats).sort_values(by="aproveitamento", ascending=False)
+    odds_casa = part['B365H'].mean()
+    odds_empate = part['B365D'].mean()
+    odds_fora = part['B365A'].mean()
 
-def analisar_partida(df, time_casa, time_fora):
-    """Gera análise adaptativa de um confronto com base na temporada 2023."""
-    base = calcular_estatisticas(df)
-    c = base[base["time"] == time_casa].iloc[0]
-    f = base[base["time"] == time_fora].iloc[0]
+    ultimos_jogos = part.sort_values(by='Date', ascending=False).head(5)
 
-    prob_casa = 0.5 + (c["aproveitamento"] - f["aproveitamento"]) / 200
-    prob_fora = 1 - prob_casa
-    empate = 0.2 * (1 - abs(prob_casa - prob_fora))
+    resposta = f"Análise: {time_casa} x {time_fora}\n"
+    resposta += f"Partidas recentes: {total}\n"
+    resposta += f"Vitórias {time_casa}: {vit_casa} | Empates: {empates} | Vitórias {time_fora}: {vit_fora}\n"
+    resposta += f"Gols totais: {gols_casa} x {gols_fora} (média {media_gols:.2f} gols/jogo)\n"
+    resposta += f"Odds médias: Casa {odds_casa:.2f} | Empate {odds_empate:.2f} | Fora {odds_fora:.2f}\n"
+    resposta += f"Últimos jogos:\n"
+    for _, row in ultimos_jogos.iterrows():
+        data = row['Date'].strftime('%d/%m/%Y')
+        placar = f"{row['FTHG']} x {row['FTAG']}"
+        odd_casa = row['B365H']
+        odd_empate = row['B365D']
+        odd_fora = row['B365A']
+        resposta += f"  {data} - {placar} (Odds Casa: {odd_casa}, Empate: {odd_empate}, Fora: {odd_fora})\n"
 
-    prob_casa = round(prob_casa - empate / 2, 2)
-    prob_fora = round(prob_fora - empate / 2, 2)
-    empate = round(empate, 2)
+    return resposta
 
-    return {
-        "time_casa": time_casa,
-        "time_fora": time_fora,
-        "probabilidades": {
-            "vitória_casa": prob_casa,
-            "empate": empate,
-            "vitória_fora": prob_fora
-        },
-        "dif_aproveitamento": round(c["aproveitamento"] - f["aproveitamento"], 2)
-    }
 
 def processar_mensagem(msg: str) -> str:
-    """
-    Função para processar mensagens do bot de acordo com o input.
-    Interpreta comandos simples ou executa análise para partidas.
-    """
+    """Intercepta comandos '/analisar' e chama análise do CSV."""
     if "analisar" in msg.lower():
-        df = carregar_dados()
-        # Exemplo simples: se o texto contiver dois times separados por 'x'
         padrao = msg.replace("Analisar", "").strip()
         if " x " in padrao:
             times = padrao.split(" x ")
             if len(times) == 2:
-                resultado = analisar_partida(df, times[0].strip(), times[1].strip())
-                return (
-                    f"Análise {times[0].strip()} x {times[1].strip()} - Probabilidades:\n"
-                    f"Vitória casa: {resultado['probabilidades']['vitória_casa']}\n"
-                    f"Empate: {resultado['probabilidades']['empate']}\n"
-                    f"Vitória fora: {resultado['probabilidades']['vitória_fora']}\n"
-                    f"Diferença de aproveitamento: {resultado['dif_aproveitamento']}%"
-                )
+                return analisar_partida_ods(times[0].strip(), times[1].strip())
         return "Exemplo de uso: /analisar Corinthians x Vasco da Gama"
     return "Comando/processo não reconhecido. Tente /analisar TIME1 x TIME2."
-
-if __name__ == "__main__":
-    df = carregar_dados()
-    resultado = analisar_partida(df, "Corinthians", "Vasco da Gama")
-    print(resultado)
