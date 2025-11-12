@@ -1,16 +1,17 @@
 #!/bin/bash
-# 🧭 Verifica o status do Apostador CH Bot no Codespace
+# 🧭 Verifica o status do Analisador CH Bot no Codespace
 
 ROOT="/workspaces/analise-ch-boot"
 LOG="$ROOT/nohup.out"
 
-echo "🔍 Verificando status do Apostador CH Bot..."
+echo "🔍 Verificando status do Analisador CH Bot..."
 
-PID=$(pgrep -f ApostadorCHBot/main.py | head -n 1)
+PIDS=$(pgrep -f AnalisadorCHBot/main.py || true)
 
-if [ -n "$PID" ]; then
-  echo "✅ Bot está em execução (PID: $PID)"
-  START_TIME=$(ps -p "$PID" -o lstart=)
+if [ -n "$PIDS" ]; then
+  echo "✅ Bot está em execução (PID(s): $(echo "$PIDS" | tr '\n' ' '))"
+  FIRST_PID=$(echo "$PIDS" | head -n 1)
+  START_TIME=$(ps -p "$FIRST_PID" -o lstart=)
   echo "🕒 Iniciado em: $START_TIME"
   echo
   echo "📄 Últimas 20 linhas do log:"
