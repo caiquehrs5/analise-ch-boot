@@ -1,13 +1,23 @@
 #!/bin/bash
-# 🛑 Encerra o Apostador CH Bot no Codespace
+# 🛑 Encerra o Analisador CH Bot no Codespace
 
-echo "🛑 Encerrando Apostador CH Bot..."
+echo "🛑 Encerrando Analisador CH Bot..."
 
-PID=$(pgrep -f ApostadorCHBot/main.py | head -n 1)
+PIDS=$(pgrep -f AnalisadorCHBot/main.py || true)
 
-if [ -n "$PID" ]; then
-  kill "$PID"
-  echo "✅ Processo (PID: $PID) encerrado com sucesso!"
-else
+if [ -z "$PIDS" ]; then
   echo "⚠️ Nenhum processo ativo encontrado."
+  exit 0
 fi
+
+for PID in $PIDS; do
+  if kill "$PID" 2>/dev/null; then
+    sleep 1
+    if ps -p "$PID" > /dev/null 2>&1; then
+      kill -9 "$PID" 2>/dev/null || true
+    fi
+    echo "✅ Processo (PID: $PID) encerrado com sucesso!"
+  else
+    echo "⚠️ Não foi possível encerrar o PID $PID (talvez já finalizado)."
+  fi
+done
